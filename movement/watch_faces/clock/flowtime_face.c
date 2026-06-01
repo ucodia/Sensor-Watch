@@ -41,7 +41,6 @@ typedef struct {
         watch_date_time previous;
     } date_time;
     uint8_t watch_face_index;
-    bool reality_check_enabled;
 } clock_state_t;
 
 static bool clock_is_in_24h_mode(movement_settings_t *settings) {
@@ -186,7 +185,6 @@ void flowtime_face_setup(movement_settings_t *settings, uint8_t watch_face_index
     if (*context_ptr == NULL) {
         *context_ptr = malloc(sizeof(clock_state_t));
         clock_state_t *state = (clock_state_t *) *context_ptr;
-        state->reality_check_enabled = false;
         state->watch_face_index = watch_face_index;
     }
 }
@@ -220,12 +218,18 @@ bool flowtime_face_loop(movement_event_t event, movement_settings_t *settings, v
         case EVENT_TICK:
         case EVENT_ACTIVATE:
             current = watch_rtc_get_date_time();
-            display = state->reality_check_enabled ? current : date_to_flowtime(&current);
+            if (watch_get_pin_level(BTN_ALARM)) {
+                display = current;
+            } else {
+                // setting the LED off is redudant but necessary as
+                // there is a race where button-up events can get lost
+                watch_set_led_off();
+                display = date_to_flowtime(&current);
+            }
             clock_display_clock(settings, state, display);
             state->date_time.previous = display;
             break;
         case EVENT_ALARM_BUTTON_DOWN:
-            state->reality_check_enabled = true;
             watch_set_led_red();
             current = watch_rtc_get_date_time();
             clock_display_clock(settings, state, current);
@@ -233,11 +237,10 @@ bool flowtime_face_loop(movement_event_t event, movement_settings_t *settings, v
             break;
         case EVENT_ALARM_LONG_UP:
         case EVENT_ALARM_BUTTON_UP:
-            state->reality_check_enabled = false;
             watch_set_led_off();
             current = watch_rtc_get_date_time();
             display = date_to_flowtime(&current);
-            clock_display_clock(settings, state, display);    
+            clock_display_clock(settings, state, display);
             state->date_time.previous = display;
             break;
         default:
@@ -250,4 +253,5 @@ bool flowtime_face_loop(movement_event_t event, movement_settings_t *settings, v
 void flowtime_face_resign(movement_settings_t *settings, void *context) {
     (void) settings;
     (void) context;
+    watch_set_led_off();
 }
